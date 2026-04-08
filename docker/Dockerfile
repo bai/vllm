@@ -594,13 +594,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --extra-index-url ${PYTORCH_CUDA_INDEX_BASE_URL}/cu$(echo $CUDA_VERSION | cut -d. -f1,2 | tr -d '.') && \
     rm /tmp/requirements-cuda.txt /tmp/common.txt
 
-# Install FlashInfer JIT cache from the pinned FlashInfer SHA.
-ARG FLASHINFER_GIT_SHA=1fd6305b4d9a2590a3b97d2fca96a59d3436471f
-ARG flashinfer_cuda_arch_list='7.0 7.5 8.0 8.9 9.0 10.0 12.0'
+# Install FlashInfer nightly wheels.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    FLASHINFER_CUDA_ARCH_LIST="${flashinfer_cuda_arch_list}" \
-    uv pip install --system --no-build-isolation \
-        "flashinfer-jit-cache @ git+https://github.com/flashinfer-ai/flashinfer.git@${FLASHINFER_GIT_SHA}#subdirectory=flashinfer-jit-cache" \
+    CUDA_VERSION_SHORT=$(echo $CUDA_VERSION | cut -d. -f1,2 | tr -d '.') && \
+    uv pip install --system -U --pre --no-deps \
+        flashinfer-python \
+        --index-url https://flashinfer.ai/whl/nightly/ && \
+    uv pip install --system -U --pre --no-deps \
+        flashinfer-cubin \
+        --index-url https://flashinfer.ai/whl/nightly/ && \
+    uv pip install --system -U --pre --no-deps \
+        flashinfer-jit-cache \
+        --index-url https://flashinfer.ai/whl/nightly/cu${CUDA_VERSION_SHORT} \
     && flashinfer show-config
 
 # Pre-download FlashInfer TRTLLM headers for air-gapped environments.
