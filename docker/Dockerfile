@@ -511,6 +511,10 @@ RUN apt-get update -y \
     && apt-get install -y --no-install-recommends \
         software-properties-common \
         curl \
+        git \
+        ninja-build \
+        gcc-10 \
+        g++-10 \
         sudo \
         ffmpeg \
         libsm6 \
@@ -535,6 +539,7 @@ RUN apt-get update -y \
         python${PYTHON_VERSION}-dev \
         python${PYTHON_VERSION}-venv \
         libibverbs-dev \
+    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 110 --slave /usr/bin/g++ g++ /usr/bin/g++-10 --slave /usr/bin/c++ c++ /usr/bin/g++-10 \
     && rm -rf /var/lib/apt/lists/* \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --set python3 /usr/bin/python${PYTHON_VERSION} \
@@ -591,35 +596,66 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --extra-index-url ${PYTORCH_CUDA_INDEX_BASE_URL}/cu$(echo $CUDA_VERSION | cut -d. -f1,2 | tr -d '.') && \
     rm /tmp/requirements-cuda.txt /tmp/common.txt
 
-# Install FlashInfer JIT cache (requires CUDA-version-specific index URL)
-# https://docs.flashinfer.ai/installation.html
-# From versions.json: .flashinfer.version
-# 0.6.7: CUTLASS 4.4.2 bump, fixes TMA grouped GEMM on SM12x (flashinfer#2798)
-# TODO: bump to 0.6.8 when released for NVFP4/MXFP4 group GEMMs on
-#   SM120/SM121 (RTX 50 / DGX Spark) via flashinfer#2738
-ARG FLASHINFER_VERSION=0.6.7
+# Install FlashInfer JIT cache from the pinned FlashInfer SHA.
+ARG FLASHINFER_GIT_SHA=1fd6305b4d9a2590a3b97d2fca96a59d3436471f
+ARG flashinfer_cuda_arch_list='7.0 7.5 8.0 8.9 9.0 10.0 12.0'
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system flashinfer-jit-cache==${FLASHINFER_VERSION} \
-        --extra-index-url https://flashinfer.ai/whl/cu$(echo $CUDA_VERSION | cut -d. -f1,2 | tr -d '.') \
+    FLASHINFER_CUDA_ARCH_LIST="${flashinfer_cuda_arch_list}" \
+    uv pip install --system --no-build-isolation \
+        "flashinfer-jit-cache @ git+https://github.com/flashinfer-ai/flashinfer.git@${FLASHINFER_GIT_SHA}#subdirectory=flashinfer-jit-cache" \
     && flashinfer show-config
 
-# Pre-download FlashInfer TRTLLM BMM headers for air-gapped environments.
-# At runtime, MoE JIT compilation downloads these from edge.urm.nvidia.com
+# Pre-download FlashInfer TRTLLM headers for air-gapped environments.
+# At runtime, JIT compilation downloads these from edge.urm.nvidia.com
 # which fails without internet. This step caches them at build time.
 RUN python3 <<'PYEOF'
 from flashinfer.jit import env as jit_env
-from flashinfer.jit.cubin_loader import download_trtllm_headers, get_cubin
+from flashinfer.jit.cubin_loader import (
+    ensure_symlink,
+    get_artifact,
+    get_meta_hash,
+    verify_symlinked_headers,
+)
+from flashinfer.jit.fused_moe import BMM_EXPORT_HEADERS
+from flashinfer.jit.gemm import GEMM_EXPORT_HEADERS
 from flashinfer.artifacts import ArtifactPath, CheckSumHash
 
-download_trtllm_headers(
-    'bmm',
-    jit_env.FLASHINFER_CUBIN_DIR / 'flashinfer' / 'trtllm' / 'batched_gemm' / 'trtllmGen_bmm_export',
-    f'{ArtifactPath.TRTLLM_GEN_BMM}/include/trtllmGen_bmm_export',
+def cache_export_headers(artifact_path, checksum_hash, export_dir, headers, symlink_parts):
+    include_path = f'{artifact_path}/include'
+    checksum_path = f'{artifact_path}/checksums.txt'
+    checksum = get_artifact(checksum_path, checksum_hash)
+    assert checksum, f'Failed to get checksums.txt from {checksum_path}'
+
+    export_path = f'{include_path}/{export_dir}'
+    for header in headers:
+        artifact = get_artifact(
+            f'{export_path}/{header}',
+            get_meta_hash(checksum, header),
+        )
+        assert artifact, f'{header} not found in {export_path}'
+
+    symlink_path = jit_env.FLASHINFER_CUBIN_DIR
+    for part in symlink_parts:
+        symlink_path /= part
+    ensure_symlink(symlink_path, jit_env.FLASHINFER_CUBIN_DIR / export_path)
+    verify_symlinked_headers(symlink_path, headers, checksum)
+
+cache_export_headers(
     ArtifactPath.TRTLLM_GEN_BMM,
-    get_cubin(f'{ArtifactPath.TRTLLM_GEN_BMM}/checksums.txt', CheckSumHash.TRTLLM_GEN_BMM),
+    CheckSumHash.TRTLLM_GEN_BMM,
+    'trtllmGen_bmm_export',
+    BMM_EXPORT_HEADERS,
+    ('flashinfer', 'trtllm', 'batched_gemm', 'trtllmGen_bmm_export'),
+)
+cache_export_headers(
+    ArtifactPath.TRTLLM_GEN_GEMM,
+    CheckSumHash.TRTLLM_GEN_GEMM,
+    'trtllmGen_gemm_export',
+    GEMM_EXPORT_HEADERS,
+    ('flashinfer', 'trtllm', 'gemm', 'trtllmGen_gemm_export'),
 )
 
-print('FlashInfer TRTLLM BMM headers downloaded successfully')
+print('FlashInfer TRTLLM export headers downloaded successfully')
 PYEOF
 
 # ============================================================
