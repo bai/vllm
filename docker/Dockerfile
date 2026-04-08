@@ -539,7 +539,6 @@ RUN apt-get update -y \
         python${PYTHON_VERSION}-dev \
         python${PYTHON_VERSION}-venv \
         libibverbs-dev \
-    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 110 --slave /usr/bin/g++ g++ /usr/bin/g++-10 --slave /usr/bin/c++ c++ /usr/bin/g++-10 \
     && rm -rf /var/lib/apt/lists/* \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --set python3 /usr/bin/python${PYTHON_VERSION} \
@@ -600,6 +599,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 ARG FLASHINFER_GIT_SHA=1fd6305b4d9a2590a3b97d2fca96a59d3436471f
 ARG flashinfer_cuda_arch_list='7.0 7.5 8.0 8.9 9.0 10.0 12.0'
 RUN --mount=type=cache,target=/root/.cache/uv \
+    CC=/usr/bin/gcc-10 \
+    CXX=/usr/bin/g++-10 \
+    CUDAHOSTCXX=/usr/bin/g++-10 \
     FLASHINFER_CUDA_ARCH_LIST="${flashinfer_cuda_arch_list}" \
     uv pip install --system --no-build-isolation \
         "flashinfer-jit-cache @ git+https://github.com/flashinfer-ai/flashinfer.git@${FLASHINFER_GIT_SHA}#subdirectory=flashinfer-jit-cache" \
