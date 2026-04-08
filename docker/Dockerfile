@@ -622,7 +622,7 @@ from flashinfer.jit.cubin_loader import (
     verify_symlinked_headers,
 )
 from flashinfer.jit.fused_moe import BMM_EXPORT_HEADERS
-from flashinfer.jit.gemm import GEMM_EXPORT_HEADERS
+from flashinfer.jit.gemm.core import GEMM_EXPORT_HEADERS
 from flashinfer.artifacts import ArtifactPath, CheckSumHash
 
 def cache_export_headers(artifact_path, checksum_hash, export_dir, headers, symlink_parts):
