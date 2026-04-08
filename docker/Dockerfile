@@ -513,8 +513,7 @@ RUN apt-get update -y \
         curl \
         git \
         ninja-build \
-        gcc-10 \
-        g++-10 \
+        build-essential \
         sudo \
         ffmpeg \
         libsm6 \
@@ -599,9 +598,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 ARG FLASHINFER_GIT_SHA=1fd6305b4d9a2590a3b97d2fca96a59d3436471f
 ARG flashinfer_cuda_arch_list='7.0 7.5 8.0 8.9 9.0 10.0 12.0'
 RUN --mount=type=cache,target=/root/.cache/uv \
-    CC=/usr/bin/gcc-10 \
-    CXX=/usr/bin/g++-10 \
-    CUDAHOSTCXX=/usr/bin/g++-10 \
     FLASHINFER_CUDA_ARCH_LIST="${flashinfer_cuda_arch_list}" \
     uv pip install --system --no-build-isolation \
         "flashinfer-jit-cache @ git+https://github.com/flashinfer-ai/flashinfer.git@${FLASHINFER_GIT_SHA}#subdirectory=flashinfer-jit-cache" \
