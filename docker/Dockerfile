@@ -610,59 +610,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --index-url https://flashinfer.ai/whl/nightly/cu${CUDA_VERSION_SHORT} \
     && flashinfer show-config
 
-# Pre-download FlashInfer TRTLLM headers for air-gapped environments.
-# At runtime, JIT compilation downloads these from edge.urm.nvidia.com
-# which fails without internet. This step caches them at build time.
-RUN python3 <<'PYEOF'
-from flashinfer.jit import env as jit_env
-from flashinfer.jit.cubin_loader import (
-    ensure_symlink,
-    get_artifact,
-    get_meta_hash,
-    verify_symlinked_headers,
-)
-from flashinfer.jit.fused_moe import BMM_EXPORT_HEADERS
-from flashinfer.jit.gemm.core import GEMM_EXPORT_HEADERS
-from flashinfer.artifacts import ArtifactPath, CheckSumHash
-
-def cache_export_headers(artifact_path, checksum_hash, export_dir, headers, symlink_parts):
-    include_path = f'{artifact_path}/include'
-    checksum_path = f'{artifact_path}/checksums.txt'
-    checksum = get_artifact(checksum_path, checksum_hash)
-    assert checksum, f'Failed to get checksums.txt from {checksum_path}'
-
-    export_path = f'{include_path}/{export_dir}'
-    for header in headers:
-        artifact = get_artifact(
-            f'{export_path}/{header}',
-            get_meta_hash(checksum, header),
-        )
-        assert artifact, f'{header} not found in {export_path}'
-
-    symlink_path = jit_env.FLASHINFER_CUBIN_DIR
-    for part in symlink_parts:
-        symlink_path /= part
-    ensure_symlink(symlink_path, jit_env.FLASHINFER_CUBIN_DIR / export_path)
-    verify_symlinked_headers(symlink_path, headers, checksum)
-
-cache_export_headers(
-    ArtifactPath.TRTLLM_GEN_BMM,
-    CheckSumHash.TRTLLM_GEN_BMM,
-    'trtllmGen_bmm_export',
-    BMM_EXPORT_HEADERS,
-    ('flashinfer', 'trtllm', 'batched_gemm', 'trtllmGen_bmm_export'),
-)
-cache_export_headers(
-    ArtifactPath.TRTLLM_GEN_GEMM,
-    CheckSumHash.TRTLLM_GEN_GEMM,
-    'trtllmGen_gemm_export',
-    GEMM_EXPORT_HEADERS,
-    ('flashinfer', 'trtllm', 'gemm', 'trtllmGen_gemm_export'),
-)
-
-print('FlashInfer TRTLLM export headers downloaded successfully')
-PYEOF
-
 # ============================================================
 # OPENAI API SERVER DEPENDENCIES
 # Pre-install these to avoid reinstalling on every vLLM wheel rebuild
