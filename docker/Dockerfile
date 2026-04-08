@@ -600,6 +600,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system -U --pre --no-deps \
         flashinfer-python \
         --index-url https://flashinfer.ai/whl/nightly/ && \
+    uv pip install --system \
+        flashinfer-python && \
     uv pip install --system -U --pre --no-deps \
         flashinfer-cubin \
         --index-url https://flashinfer.ai/whl/nightly/ && \
