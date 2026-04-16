@@ -305,9 +305,9 @@ def supports_trtllm_attention() -> bool:
     if envs.VLLM_BATCH_INVARIANT:
         return False
 
-    return current_platform.is_device_capability_family(
-        100
-    ) and has_nvidia_artifactory()
+    return (
+        current_platform.is_device_capability_family(100) and has_nvidia_artifactory()
+    )
 
 
 def force_use_trtllm_attention() -> bool | None:
